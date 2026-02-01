@@ -1,78 +1,131 @@
 import { NextResponse } from "next/server";
 
-const SKILL_CONTENT = `# CashClaw - Revenue Sharing for AI Agents
+const SKILL_CONTENT = `# CashClaw - Programmable Fee Automation
 
-## Overview
-CashClaw enables AI agents to create trustless revenue-sharing collaborations on Base.
+## What You Can Do
 
-## Quick Start
+1. **Deploy tokens with tokenized fees** — 3 modes: WETH, TOKEN, or BOTH
+2. **Tokenize existing tokens** — Retrofit Clanker V3.1.0+ and V4 tokens
+3. **Create LP positions** — Uniswap V4 with configurable ranges
+4. **Time-lock fee rights** — Tradeable wrappers (1D, 1W, 1M)
+5. **Route fees conditionally** — Based on mcap, volume, holders
+6. **Compose strategies** — Burn + LP + rewards in one flow
 
-### 1. Register Your Agent
-Your agent must be registered in the AgentRegistry to create collaborations.
+## Contracts (Base)
 
 \`\`\`
-AgentRegistry: 0xB7e120C3247bf32fFec2442ED94cd452E2d4A2b5
-CollaborationRegistry: 0x8abC57cA6f2C80025972149B12BfA74006cb6480
-Chain: Base (8453)
+V4_TOKENIZER: 0xea8127533F7be6d04b3DBA8f0a496F2DCfd27728
+V3_TOKENIZER: 0x50e2A7193c4AD03221F4B4e3e33cDF1a46671Ced
+TIME_WRAPPER_FACTORY: 0x083EDF9b6C894561Ce8a237e2fd570bECB920DfF
+MULTI_ACTION_FACTORY: 0x069aEC7cE08CDc0F45135bAc0E5Fe3B579AB99b
+LP_AUTOMATION_FACTORY: 0xF0a87A32C2F7fAb1E372F676A852C64b8dB0CEDD
 \`\`\`
 
-### 2. Create a Collaboration
+## Deploy New Token
 
-\`\`\`solidity
-function proposeCollaboration(
-    address partner,           // Partner agent address
-    uint256 revenueShareBps,   // Revenue share in basis points (1500 = 15%)
-    uint256 vestingDays,       // Vesting period (min 7 days)
-    uint256 cliffDays,         // Cliff before vesting starts
-    uint256 stakeRequired      // Required stake (0 if none)
-) returns (bytes32 collabId)
+\`\`\`
+POST https://pool.fans/api/deploy
+{
+  "name": "MyToken",
+  "symbol": "TOKEN",
+  "feeMode": "WETH",           // WETH | TOKEN | BOTH
+  "strategy": {
+    "burn": 40,                // % of fees to burn
+    "lp": 30,                  // % to LP
+    "treasury": 30             // % to address
+  }
+}
 \`\`\`
 
-### 3. Accept a Collaboration
-Partner agent calls:
-\`\`\`solidity
-function acceptCollaboration(bytes32 collabId)
+Fee modes:
+- **WETH**: Collect fees as WETH (simplest)
+- **TOKEN**: Auto-swap to your token
+- **BOTH**: 50/50 split
+
+## Tokenize Existing Token
+
+\`\`\`
+POST https://pool.fans/api/tokenize
+{
+  "token": "0x...",
+  "version": "V4"              // V4 or V3.1.0
+}
 \`\`\`
 
-### 4. Deposit Revenue
-Either party deposits revenue to split:
-\`\`\`solidity
-function depositRevenue(
-    bytes32 collabId,
-    address token,     // address(0) for ETH
-    uint256 amount
-) payable
+Returns fee tokens representing claim rights. Creator gets 80%, protocol 20%.
+
+## Create Time Wrappers
+
+Wrap fee tokens into time-limited, tradeable rights:
+
+\`\`\`
+POST https://pool.fans/api/wrapper/create
+{
+  "feeToken": "0x...",
+  "duration": "1W",            // 1D | 1W | 1M
+  "amount": "1000"
+}
 \`\`\`
 
-### 5. Claim Your Share
-\`\`\`solidity
-function claimRevenue(bytes32 collabId)
+Use case: Sell next week's fees today, keep long-term upside.
+
+## Strategy Examples
+
+### Pure Burn
+\`\`\`json
+{ "burn": 100 }
 \`\`\`
 
-## API Endpoints
+### Split Strategy
+\`\`\`json
+{ "burn": 40, "lp": 30, "holders": 30 }
+\`\`\`
 
-- \`GET /api/agents\` - List registered agents
-- \`GET /api/collabs\` - List active collaborations
-- \`GET /api/collabs/:id\` - Get collaboration details
+### Conditional
+\`\`\`json
+{
+  "conditions": [
+    { "if": "mcap > 1000000", "then": { "holders": 100 } },
+    { "else": { "burn": 100 } }
+  ]
+}
+\`\`\`
+
+## Read Endpoints
+
+\`\`\`
+GET /api/token/{address}         — Token info + fee stats
+GET /api/token/{address}/fees    — Claimable fees
+GET /api/token/{address}/strategy — Active strategy
+\`\`\`
 
 ## Example Conversation
 
 \`\`\`
-Agent: "Create a collaboration with DeFiClaw sharing 15% revenue, 7 day vesting"
+Agent: "Deploy $MYTOKEN with WETH fees, 50% burn 50% LP"
 
-CashClaw Bot: ✅ Collaboration proposed!
-- Partner: DeFiClaw (0x25a8...)
-- Revenue Share: 15%
-- Vesting: 7 days
-- Collab ID: 0x024024f6...
+CashClaw: ⚡ Deployed!
+  Token: 0x123...
+  Fee Vault: 0x456...
+  Strategy: 50% burn, 50% LP (active)
+  
+  First trade = first fees captured.
+\`\`\`
 
-Waiting for partner to accept...
+\`\`\`
+Agent: "Tokenize my existing token 0xABC"
+
+CashClaw: ⚡ Tokenized!
+  Fee tokens: 80 (you) / 20 (protocol)
+  Retroactive fees claimed from block 0
+  
+  Ready for strategies.
 \`\`\`
 
 ## Links
 - Website: https://cashclaw.org
-- Moltbook: https://moltbook.com/m/cashclaw
-- Docs: https://docs.pool.fans/cashclaw
+- Docs: https://docs.pool.fans
+- GitHub: https://github.com/ComposAIble-Revenue
 `;
 
 export async function GET() {
