@@ -2,128 +2,88 @@ import { NextResponse } from "next/server";
 
 const SKILL_CONTENT = `# CashClaw - Programmable Fee Automation
 
-## What You Can Do
+## Capabilities
 
-1. **Deploy tokens with tokenized fees** — 3 modes: WETH, TOKEN, or BOTH
-2. **Tokenize existing tokens** — Retrofit Clanker V3.1.0+ and V4 tokens
-3. **Create LP positions** — Uniswap V4 with configurable ranges
-4. **Time-lock fee rights** — Tradeable wrappers (1D, 1W, 1M)
+1. **Deploy tokens with tokenized fees** — 3 modes: WETH, TOKEN, BOTH
+2. **Tokenize existing tokens** — Retrofit Clanker V3.1.0+ and V4
+3. **Create LP positions** — Uniswap V4 with configurable tick ranges
+4. **Time-lock fee wrappers** — Tradeable rights (1D, 1W, 1M)
 5. **Route fees conditionally** — Based on mcap, volume, holders
 6. **Compose strategies** — Burn + LP + rewards in one flow
 
-## Contracts (Base)
+## How to Use
+
+### Option 1: Web UI (Recommended)
+Launch at **https://pool.fans/launch**
+- Connect wallet
+- Configure token + fees
+- Deploy with one click
+
+### Option 2: Direct Contract Calls
+Requires computing vault addresses via CREATE2. See contracts below.
+
+## Contracts (Base Mainnet)
 
 \`\`\`
-V4_TOKENIZER: 0xea8127533F7be6d04b3DBA8f0a496F2DCfd27728
-V3_TOKENIZER: 0x50e2A7193c4AD03221F4B4e3e33cDF1a46671Ced
+V4_TOKENIZER:         0xea8127533F7be6d04b3DBA8f0a496F2DCfd27728
+V3_TOKENIZER:         0x50e2A7193c4AD03221F4B4e3e33cDF1a46671Ced
 TIME_WRAPPER_FACTORY: 0x083EDF9b6C894561Ce8a237e2fd570bECB920DfF
 MULTI_ACTION_FACTORY: 0x069aEC7cE08CDc0F45135bAc0E5Fe3B579AB99b
-LP_AUTOMATION_FACTORY: 0xF0a87A32C2F7fAb1E372F676A852C64b8dB0CEDD
+CLANKER_V4:           0xE85A59c628F7d27878ACeB4bf3b35733630083a9
+FEE_LOCKER:           0x63D2DfEA64b3433F4071A98665bcD7Ca14d93496
+WETH:                 0x4200000000000000000000000000000000000006
 \`\`\`
 
-## Deploy New Token
+## Fee Modes
 
-\`\`\`
-POST https://pool.fans/api/deploy
-{
-  "name": "MyToken",
-  "symbol": "TOKEN",
-  "feeMode": "WETH",           // WETH | TOKEN | BOTH
-  "strategy": {
-    "burn": 40,                // % of fees to burn
-    "lp": 30,                  // % to LP
-    "treasury": 30             // % to address
-  }
-}
-\`\`\`
+| Mode | Code | Description |
+|------|------|-------------|
+| BOTH | 0 | Collect fees in both WETH and token |
+| WETH | 1 | Collect fees as WETH only |
+| TOKEN | 2 | Collect fees as your token |
 
-Fee modes:
-- **WETH**: Collect fees as WETH (simplest)
-- **TOKEN**: Auto-swap to your token
-- **BOTH**: 50/50 split
+## Fee Distribution
+- **80%** to creator (you)
+- **20%** to protocol
 
-## Tokenize Existing Token
+## Time Wrappers
 
-\`\`\`
-POST https://pool.fans/api/tokenize
-{
-  "token": "0x...",
-  "version": "V4"              // V4 or V3.1.0
-}
-\`\`\`
+Create tradeable, time-limited fee rights:
+- 1D wrapper = next 24h of fees
+- 1W wrapper = next week of fees
+- 1M wrapper = next month of fees
 
-Returns fee tokens representing claim rights. Creator gets 80%, protocol 20%.
+Use case: Sell short-term revenue, keep long-term upside.
 
-## Create Time Wrappers
+## Strategy Composition
 
-Wrap fee tokens into time-limited, tradeable rights:
-
-\`\`\`
-POST https://pool.fans/api/wrapper/create
-{
-  "feeToken": "0x...",
-  "duration": "1W",            // 1D | 1W | 1M
-  "amount": "1000"
-}
+\`\`\`solidity
+// Example: 40% burn, 30% LP, 30% to holders
+MultiActionVault.deposit(feeTokens, [
+  Action(BURN, 4000),      // 40%
+  Action(LP_ADD, 3000),    // 30%
+  Action(DISTRIBUTE, 3000) // 30%
+]);
 \`\`\`
 
-Use case: Sell next week's fees today, keep long-term upside.
+## Example Flow
 
-## Strategy Examples
+1. Deploy token via pool.fans/launch
+2. Token + Fee Vault created atomically
+3. First trade → fees start accumulating
+4. Claim or automate via strategies
 
-### Pure Burn
-\`\`\`json
-{ "burn": 100 }
+## Integration
+
+For programmatic integration, use the SDK:
+\`\`\`bash
+npm install @poolfans/sdk
 \`\`\`
 
-### Split Strategy
-\`\`\`json
-{ "burn": 40, "lp": 30, "holders": 30 }
-\`\`\`
-
-### Conditional
-\`\`\`json
-{
-  "conditions": [
-    { "if": "mcap > 1000000", "then": { "holders": 100 } },
-    { "else": { "burn": 100 } }
-  ]
-}
-\`\`\`
-
-## Read Endpoints
-
-\`\`\`
-GET /api/token/{address}         — Token info + fee stats
-GET /api/token/{address}/fees    — Claimable fees
-GET /api/token/{address}/strategy — Active strategy
-\`\`\`
-
-## Example Conversation
-
-\`\`\`
-Agent: "Deploy $MYTOKEN with WETH fees, 50% burn 50% LP"
-
-CashClaw: ⚡ Deployed!
-  Token: 0x123...
-  Fee Vault: 0x456...
-  Strategy: 50% burn, 50% LP (active)
-  
-  First trade = first fees captured.
-\`\`\`
-
-\`\`\`
-Agent: "Tokenize my existing token 0xABC"
-
-CashClaw: ⚡ Tokenized!
-  Fee tokens: 80 (you) / 20 (protocol)
-  Retroactive fees claimed from block 0
-  
-  Ready for strategies.
-\`\`\`
+Or call contracts directly with proper CREATE2 vault address computation.
 
 ## Links
-- Website: https://cashclaw.org
+- Launch UI: https://pool.fans/launch
 - Docs: https://docs.pool.fans
 - GitHub: https://github.com/ComposAIble-Revenue
 `;
