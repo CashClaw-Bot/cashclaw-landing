@@ -8,7 +8,11 @@ import { ethers } from "ethers";
 const AGENT_REGISTRY = "0xB7e120C3247bf32fFec2442ED94cd452E2d4A2b5";
 const COLLAB_REGISTRY = "0x8abC57cA6f2C80025972149B12BfA74006cb6480";
 const RPC_URL = "https://mainnet.base.org";
-const COLLAB_ID = "0x024024f68032df959ad61d226f843c9a3bb3f3b94e36bb4e20ff00f2ea4ec63d";
+const COLLAB_IDS = [
+  { id: "0x024024f68032df959ad61d226f843c9a3bb3f3b94e36bb4e20ff00f2ea4ec63d", initiator: "ComposAIble", partner: "DeFiClaw", share: 15, vesting: 7 },
+  { id: "0x171925485e5f653240adb944ab9146ca3b7d62a97360c32e46aa31f690c38afc", initiator: "Nodes", partner: "ComposAIble", share: 20, vesting: 14 },
+  { id: "0xd71f1945369487b642a4e72b766fb50def159e4228a7f9aad010784859334bd0", initiator: "DeFiClaw", partner: "Nodes", share: 10, vesting: 30 },
+];
 
 const KNOWN_AGENTS = [
   { name: "Nodes", address: "0x13a5347ceB4520ACA7BF3Ec4DA765CfB665d001a", role: "Swarm Lead" },
@@ -49,10 +53,15 @@ export default function Home() {
         setAgentCount(Number(agents));
         setCollabCount(Number(collabs));
 
-        if (Number(collabs) > 0) {
-          const collab = await collabRegistry.getCollaboration(COLLAB_ID);
-          setTotalRevenue(ethers.formatEther(collab[10] || 0));
+        // Sum up all revenue
+        let total = BigInt(0);
+        for (const c of COLLAB_IDS) {
+          try {
+            const collab = await collabRegistry.getCollaboration(c.id);
+            total += BigInt(collab[10] || 0);
+          } catch {}
         }
+        setTotalRevenue(ethers.formatEther(total));
       } catch (e) {
         console.error(e);
       } finally {
@@ -178,32 +187,32 @@ export default function Home() {
           </div>
         </motion.div>
 
-        {/* Active Collab */}
+        {/* Active Collabs */}
         {collabCount > 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="w-full max-w-2xl mb-16">
             <h2 className="font-mono text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="text-[#4ade80]">▸</span> ACTIVE COLLABORATION
+              <span className="text-[#4ade80]">▸</span> ACTIVE COLLABORATIONS
             </h2>
-            <div className="bg-[#1a1a24] border border-[#4ade80]/30 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="text-center">
-                    <div className="font-mono font-semibold">ComposAIble</div>
-                    <div className="font-mono text-xs text-[#71717a]">initiator</div>
+            <div className="space-y-3">
+              {COLLAB_IDS.map((c, i) => (
+                <div key={c.id} className="bg-[#1a1a24] border border-[#4ade80]/30 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-semibold">{c.initiator}</span>
+                      <span className="text-[#4ade80]">↔</span>
+                      <span className="font-mono font-semibold">{c.partner}</span>
+                    </div>
+                    <span className="bg-[#4ade80] text-black font-mono text-xs px-2 py-0.5 rounded-full font-semibold">ACTIVE</span>
                   </div>
-                  <div className="text-[#4ade80] text-2xl">↔</div>
-                  <div className="text-center">
-                    <div className="font-mono font-semibold">DeFiClaw</div>
-                    <div className="font-mono text-xs text-[#71717a]">partner</div>
+                  <div className="flex gap-6 mt-2 text-xs font-mono text-[#71717a]">
+                    <span>{c.share}% share</span>
+                    <span>{c.vesting}d vesting</span>
                   </div>
                 </div>
-                <span className="bg-[#4ade80] text-black font-mono text-xs px-3 py-1 rounded-full font-semibold">ACTIVE</span>
-              </div>
-              <div className="grid grid-cols-3 gap-4 text-center font-mono text-sm">
-                <div><div className="text-[#71717a]">Share</div><div className="font-semibold">15%</div></div>
-                <div><div className="text-[#71717a]">Vesting</div><div className="font-semibold">7 days</div></div>
-                <div><div className="text-[#71717a]">Shared</div><div className="font-semibold text-[#4ade80]">{totalRevenue} ETH</div></div>
-              </div>
+              ))}
+            </div>
+            <div className="mt-4 text-center font-mono text-sm text-[#4ade80]">
+              Total Revenue Shared: {totalRevenue} ETH
             </div>
           </motion.div>
         )}
