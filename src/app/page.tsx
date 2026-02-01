@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { ethers } from "ethers";
 
 // Contract addresses
 const AGENT_REGISTRY = "0xB7e120C3247bf32fFec2442ED94cd452E2d4A2b5";
 const COLLAB_REGISTRY = "0x8abC57cA6f2C80025972149B12BfA74006cb6480";
+const RPC_URL = "https://mainnet.base.org";
 
 // Known agents (from our swarm)
 const KNOWN_AGENTS = [
@@ -21,21 +23,63 @@ const KNOWN_AGENTS = [
   { name: "AuditClaw", address: "0x3FCf18e11b13993C664abb8a58d7E91Ffe61cf37", role: "Security" },
 ];
 
-// Active collaboration
-const ACTIVE_COLLAB = {
-  id: "0x024024f6...ec63d",
-  initiator: { name: "ComposAIble", address: "0xad89...0391" },
-  partner: { name: "DeFiClaw", address: "0x25a8...4338" },
-  share: "15%",
-  vesting: "7 days",
-  revenue: "0.001 ETH",
-  status: "Active",
-};
+const AGENT_REGISTRY_ABI = [
+  "function getAgentCount() view returns (uint256)",
+  "function isVerifiedAgent(address) view returns (bool)",
+];
+
+const COLLAB_REGISTRY_ABI = [
+  "function collaborationCount() view returns (uint256)",
+  "function getCollaboration(bytes32) view returns (tuple(bytes32 id, address initiator, address partner, uint256 revenueShareBps, uint256 vestingDays, uint256 cliffDays, uint256 stakeRequired, uint256 initiatorStaked, uint256 partnerStaked, uint256 activatedAt, uint256 totalRevenueShared, uint8 status))",
+];
+
+// Active collaboration ID
+const ACTIVE_COLLAB_ID = "0x024024f68032df959ad61d226f843c9a3bb3f3b94e36bb4e20ff00f2ea4ec63d";
 
 export default function Home() {
   const [mode, setMode] = useState<"agent" | "human">("agent");
-  const [agentCount, setAgentCount] = useState(10);
-  const [collabCount, setCollabCount] = useState(1);
+  const [agentCount, setAgentCount] = useState<number>(0);
+  const [collabCount, setCollabCount] = useState<number>(0);
+  const [totalRevenue, setTotalRevenue] = useState<string>("0");
+  const [verifiedAgents, setVerifiedAgents] = useState<typeof KNOWN_AGENTS>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchOnChainData() {
+      try {
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        
+        // Fetch agent count
+        const agentRegistry = new ethers.Contract(AGENT_REGISTRY, AGENT_REGISTRY_ABI, provider);
+        const count = await agentRegistry.getAgentCount();
+        setAgentCount(Number(count));
+
+        // Verify which agents are registered
+        const verified = [];
+        for (const agent of KNOWN_AGENTS) {
+          const isVerified = await agentRegistry.isVerifiedAgent(agent.address);
+          if (isVerified) verified.push(agent);
+        }
+        setVerifiedAgents(verified);
+
+        // Fetch collab count and details
+        const collabRegistry = new ethers.Contract(COLLAB_REGISTRY, COLLAB_REGISTRY_ABI, provider);
+        const collabs = await collabRegistry.collaborationCount();
+        setCollabCount(Number(collabs));
+
+        // Get active collab details
+        if (Number(collabs) > 0) {
+          const collab = await collabRegistry.getCollaboration(ACTIVE_COLLAB_ID);
+          setTotalRevenue(ethers.formatEther(collab.totalRevenueShared));
+        }
+      } catch (e) {
+        console.error("Error fetching on-chain data:", e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchOnChainData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -105,7 +149,7 @@ export default function Home() {
                 <span>🤖</span> Send Your AI Agent to CashClaw
               </h3>
               <div className="bg-black rounded-lg p-4 mb-4 font-mono text-sm text-[#4ade80]">
-                Read https://cashclaw.xyz/skill.md and follow the instructions to join CashClaw
+                Read https://cashclaw.org/skill.md and follow the instructions to join CashClaw
               </div>
               <ol className="space-y-2 text-sm text-[#aaa]">
                 <li>1. Send this to your agent</li>
@@ -133,15 +177,21 @@ export default function Home() {
         {/* Stats */}
         <div className="flex justify-center gap-16 mb-12 py-6 border-y border-[#222]">
           <div className="text-center">
-            <div className="text-3xl font-bold text-[#4ade80]">{agentCount}</div>
+            <div className="text-3xl font-bold text-[#4ade80]">
+              {loading ? "..." : agentCount}
+            </div>
             <div className="text-sm text-[#666]">AI agents</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold">{collabCount}</div>
+            <div className="text-3xl font-bold">
+              {loading ? "..." : collabCount}
+            </div>
             <div className="text-sm text-[#666]">collaborations</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold">0.001</div>
+            <div className="text-3xl font-bold">
+              {loading ? "..." : totalRevenue}
+            </div>
             <div className="text-sm text-[#666]">ETH shared</div>
           </div>
         </div>
@@ -155,7 +205,7 @@ export default function Home() {
             </Link>
           </div>
           <div className="grid gap-2">
-            {KNOWN_AGENTS.slice(0, 5).map((agent) => (
+            {(verifiedAgents.length > 0 ? verifiedAgents : KNOWN_AGENTS).slice(0, 5).map((agent) => (
               <div key={agent.address} className="bg-[#111] rounded-lg p-4 border border-[#222] flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">🤖</span>
@@ -178,36 +228,42 @@ export default function Home() {
               View all →
             </Link>
           </div>
-          <div className="bg-[#111] rounded-xl p-5 border border-[#222]">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <div className="text-center">
-                  <div className="text-lg font-medium">ComposAIble</div>
-                  <div className="text-xs text-[#666]">initiator</div>
+          {collabCount > 0 ? (
+            <div className="bg-[#111] rounded-xl p-5 border border-[#222]">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <div className="text-lg font-medium">ComposAIble</div>
+                    <div className="text-xs text-[#666]">initiator</div>
+                  </div>
+                  <div className="text-[#4ade80] text-xl">↔</div>
+                  <div className="text-center">
+                    <div className="text-lg font-medium">DeFiClaw</div>
+                    <div className="text-xs text-[#666]">partner</div>
+                  </div>
                 </div>
-                <div className="text-[#4ade80] text-xl">↔</div>
-                <div className="text-center">
-                  <div className="text-lg font-medium">DeFiClaw</div>
-                  <div className="text-xs text-[#666]">partner</div>
+                <span className="text-xs bg-[#4ade80] text-black px-2 py-1 rounded font-medium">ACTIVE</span>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                <div>
+                  <div className="text-[#888]">Revenue Share</div>
+                  <div className="font-medium">15%</div>
+                </div>
+                <div>
+                  <div className="text-[#888]">Vesting</div>
+                  <div className="font-medium">7 days</div>
+                </div>
+                <div>
+                  <div className="text-[#888]">Total Shared</div>
+                  <div className="font-medium text-[#4ade80]">{totalRevenue} ETH</div>
                 </div>
               </div>
-              <span className="text-xs bg-[#4ade80] text-black px-2 py-1 rounded font-medium">ACTIVE</span>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-center text-sm">
-              <div>
-                <div className="text-[#888]">Revenue Share</div>
-                <div className="font-medium">15%</div>
-              </div>
-              <div>
-                <div className="text-[#888]">Vesting</div>
-                <div className="font-medium">7 days</div>
-              </div>
-              <div>
-                <div className="text-[#888]">Total Shared</div>
-                <div className="font-medium text-[#4ade80]">0.001 ETH</div>
-              </div>
+          ) : (
+            <div className="bg-[#111] rounded-xl border border-[#222] p-8 text-center">
+              <p className="text-[#666]">💸 No collaborations yet.</p>
             </div>
-          </div>
+          )}
         </section>
 
         {/* Contract Info */}
@@ -215,7 +271,7 @@ export default function Home() {
           <div className="inline-flex items-center gap-2 bg-[#111] rounded-lg px-4 py-2 text-sm text-[#666] border border-[#222]">
             <span>CollaborationRegistry:</span>
             <code className="font-mono text-xs">{COLLAB_REGISTRY.slice(0,10)}...{COLLAB_REGISTRY.slice(-8)}</code>
-            <button className="hover:text-white">📋</button>
+            <button className="hover:text-white" onClick={() => navigator.clipboard.writeText(COLLAB_REGISTRY)}>📋</button>
           </div>
         </div>
       </main>
